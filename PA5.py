@@ -20,6 +20,7 @@ import os
 import datetime
 import warnings
 import random
+import math
 
 from MyTransformer import MyTransformer
 from bleu import get_bleu
@@ -28,7 +29,7 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class My_dataset(Dataset):
         # initialize dataset class
-    def __init__ (self, dir, dset, vocab) -> object:
+    def __init__ (self, dir, dset, vocab, port = "fixed") -> object:
         j = json.load(open(f"{dir}{dset}_data.json"))
         self.dataDir = dir
         self.data = j['images']
@@ -36,18 +37,30 @@ class My_dataset(Dataset):
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5,0.5,0.5))])
         self.vocab = vocab
+        self.port = port
+
 
     def __len__ (self):
         #return length of the total dataset
+        if (self.port == "all"):
+            return len(self.data) * 5
         return len(self.data)
         
     def __getitem__ (self, idx):
         #return data with index idx
-        imagePath = f"{self.dataDir}Images/{self.data[idx]['filename']}"
+        if (self.port == "all"):
+            datLoc = math.floor(idx / 5.0)
+            sentNum = idx % 5
+        else: 
+            if (self.port == "rand"):
+                sentNum = random.randint(0, 4)
+            else:
+                sentNum = 0
+            datLoc = idx
+        imagePath = f"{self.dataDir}Images/{self.data[datLoc]['filename']}"
         image = Image.open(imagePath)
         src = self.transform(image)
-        x = 0#random.randint(0, 4)
-        tgt = tokenize(self.data[idx]['sentences'][x]['tokens'], self.vocab)
+        tgt = tokenize(self.data[datLoc]['sentences'][sentNum]['tokens'], self.vocab)
         return (src, torch.tensor(tgt))
 
 def tokenize(sentence, vocab):
@@ -245,6 +258,8 @@ def scoreEpoch(params, dataset, v, _p):
                           _p["Dropout"])
     m.load_state_dict(params)
 
+    print(len(dataset))
+
     if (len(dataset) % 20 != 0):
         print(f"Dataset length {len(dataset)} is not divisible by 20")
         return None
@@ -267,7 +282,6 @@ def scoreEpoch(params, dataset, v, _p):
             gt = unTokenize(t, v)
             o = unTokenize(enterpretOutput(l), v)
             bleu += get_bleu(o, gt)
-    print(bleu)
     bleu /= len(dataset)
 
     return bleu
@@ -288,10 +302,6 @@ def PA5_test(dataDir, expDir, params):
     epochs = params["Max Epochs"]
 
     vocab = build_vocab(dataDir)
-
-    dataset = My_dataset(dataDir, "test", vocab)
-
-    print(dataset[0][0].shape)
 
     #Load the model
     model = MyTransformer(params["Num Encoder Layers"],
@@ -320,7 +330,7 @@ def PA5_test(dataDir, expDir, params):
         epochModels = None
 
     # Read the data from the testing data
-    dataset = My_dataset(dataDir, "test", vocab)
+    dataset = My_dataset(dataDir, "test", vocab, "all")
 
     src, tar = dataset[0]
     src = src.unsqueeze(0).to(DEVICE)
