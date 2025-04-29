@@ -12,7 +12,6 @@ class PositionalEncoding(nn.Module):
     def __init__(self,
                  emb_size: int,
                  dropout: float,
-                 device,
                  maxlen: int = 5000):
         super(PositionalEncoding, self).__init__()
         den = torch.exp(- torch.arange(0, emb_size, 2)* math.log(10000) / emb_size)
@@ -23,16 +22,16 @@ class PositionalEncoding(nn.Module):
         pos_embedding = pos_embedding.unsqueeze(-2)
 
         self.dropout = nn.Dropout(dropout)
-        self.register_buffer('pos_embedding', pos_embedding.to(device))
+        self.register_buffer('pos_embedding', pos_embedding)
 
     def forward(self, token_embedding: Tensor):
         return self.dropout(token_embedding + self.pos_embedding[:token_embedding.size(0), :])
 
 # helper Module to convert tensor of input indices into corresponding tensor of token embeddings
 class TokenEmbedding(nn.Module):
-    def __init__(self, vocab_size: int, emb_size, device):
+    def __init__(self, vocab_size: int, emb_size):
         super(TokenEmbedding, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, emb_size, device=device)
+        self.embedding = nn.Embedding(vocab_size, emb_size)
         self.emb_size = emb_size
 
     def forward(self, tokens: Tensor):
@@ -45,9 +44,7 @@ class MyTransformer(nn.Module):
                  num_decoder_layers: int,
                  emb_size: int,
                  nhead: int,
-                 #src_vocab_size: int,
                  tgt_vocab_size: int,
-                 device,
                  image_size: int = 256,
                  patch_size: int = 16,
                  num_classes: int = 1000,
@@ -60,7 +57,7 @@ class MyTransformer(nn.Module):
                                        num_decoder_layers=num_decoder_layers,
                                        dim_feedforward=dim_feedforward,
                                        dropout=dropout,
-                                       batch_first=False, device=device)
+                                       batch_first=False)
         self.vision = ViT(
                         image_size=image_size, #Size of the image
                         patch_size=patch_size, # number of patches
@@ -73,14 +70,15 @@ class MyTransformer(nn.Module):
                         emb_dropout=dropout,
                     )
         self.vision_encoder = Extractor(self.vision)
-        self.generator = nn.Linear(emb_size, tgt_vocab_size, device=device)
+        self.generator = nn.Linear(emb_size, tgt_vocab_size)
         #self.src_tok_emb = TokenEmbedding(src_vocab_size, emb_size, device)
-        self.tgt_tok_emb = TokenEmbedding(tgt_vocab_size, emb_size, device)
+        self.tgt_tok_emb = TokenEmbedding(tgt_vocab_size, emb_size)
         self.positional_encoding = PositionalEncoding(
-            emb_size, dropout=dropout, device=device)
-        self.device = device
+            emb_size, dropout=dropout)
 
-
+    @property
+    def device(self):
+        return next(self.parameters()).device
     def generate_square_subsequent_mask(self, sz):
         mask = (torch.triu(torch.ones((sz, sz), device=self.device)) == 1).transpose(0, 1)
         mask = mask.float().masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, float(0.0))

@@ -29,11 +29,11 @@ DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class My_dataset(Dataset):
         # initialize dataset class
-    def __init__ (self, dir, dset, vocab, port = "fixed") -> object:
+    def __init__ (self, dir, dset, vocab, imDim, port = "fixed") -> object:
         j = json.load(open(f"{dir}{dset}_data.json"))
         self.dataDir = dir
         self.data = j['images']
-        self.transform = transforms.Compose([transforms.Resize((256, 256)),
+        self.transform = transforms.Compose([transforms.Resize((imDim, imDim)),
                                             transforms.ToTensor(),
                                             transforms.Normalize((0.5, 0.5, 0.5), (0.5,0.5,0.5))])
         self.vocab = vocab
@@ -106,8 +106,8 @@ def PA5_train(dataDir, expDir, _p):
 
     vocab = build_vocab(dataDir)
 
-    train_dataset = My_dataset(dataDir, "training", vocab)
-    valid_dataset = My_dataset(dataDir, "val", vocab)
+    train_dataset = My_dataset(dataDir, "training", vocab, _p["Image Size"], "rand")
+    valid_dataset = My_dataset(dataDir, "val", vocab, _p["Image Size"], "all")
     print(len(valid_dataset))
 
     create_batch_padded = lambda x: create_batch(x, vocab['<pad>'])
@@ -118,7 +118,7 @@ def PA5_train(dataDir, expDir, _p):
                                                       collate_fn=create_batch_padded)
     
     validation_dataloader = torch.utils.data.DataLoader(valid_dataset,
-                                                      batch_size=20,
+                                                      batch_size=50,
                                                       shuffle=False,
                                                       collate_fn=create_batch_padded)
    
@@ -128,12 +128,12 @@ def PA5_train(dataDir, expDir, _p):
                           _p["Embedding Size"],
                           _p["Num Heads"],
                           len(vocab),
-                          DEVICE,
                           _p["Image Size"],
                           _p["Patch Size"],
                           _p["Num Classes"],
                           _p["Dim Forward"],
                           _p["Dropout"])
+    model.to(DEVICE)
     for p in model.parameters():
         if p.dim() > 1:
             torch.nn.init.xavier_uniform_(p)
@@ -172,7 +172,7 @@ def PA5_train(dataDir, expDir, _p):
 
         #validation loss
         val_iter = iter(validation_dataloader)
-        for b1 in range(50):
+        for b1 in range(100):
             src, tar = next(val_iter)
             src = src.to(DEVICE)
             tar = tar.to(DEVICE)
@@ -250,15 +250,13 @@ def scoreEpoch(params, dataset, v, _p):
                           _p["Embedding Size"],
                           _p["Num Heads"],
                           len(v),
-                          DEVICE,
                           _p["Image Size"],
                           _p["Patch Size"],
                           _p["Num Classes"],
                           _p["Dim Forward"],
                           _p["Dropout"])
+    m.to(DEVICE)
     m.load_state_dict(params)
-
-    print(len(dataset))
 
     if (len(dataset) % 20 != 0):
         print(f"Dataset length {len(dataset)} is not divisible by 20")
@@ -309,12 +307,12 @@ def PA5_test(dataDir, expDir, params):
                           params["Embedding Size"],
                           params["Num Heads"],
                           len(vocab),
-                          DEVICE,
                           params["Image Size"],
                           params["Patch Size"],
                           params["Num Classes"],
                           params["Dim Forward"],
                           params["Dropout"])
+    model.to(DEVICE)
     finalParams = torch.load(expDir+"/params/saved_model.pth")
     model.load_state_dict(finalParams)
 
@@ -330,7 +328,7 @@ def PA5_test(dataDir, expDir, params):
         epochModels = None
 
     # Read the data from the testing data
-    dataset = My_dataset(dataDir, "test", vocab, "all")
+    dataset = My_dataset(dataDir, "test", vocab, params["Image Size"], "all")
 
     src, tar = dataset[0]
     src = src.unsqueeze(0).to(DEVICE)
@@ -382,22 +380,22 @@ if __name__ == "__main__":
     print(torch.__version__)
     torch.set_default_dtype(torch.float64)
     dataDir = "data/"
-    expDir = "Experiment0"
+    expDir = "Experiment3"
 
     params = {}
     params["Batch Size"] = 30
-    params["Num Batches"] = 10
-    params["Max Epochs"] = 10
+    params["Num Batches"] = 200
+    params["Max Epochs"] = 40
 
     params["Num Encoder Layers"] = 3
     params["Num Decoder Layers"] = 3
     params["Embedding Size"] = 512
     params["Num Heads"] = 8
     params["Image Size"] = 256
-    params["Patch Size"] = 16
+    params["Patch Size"] = 32 #num patches
     params["Num Classes"] = 1000
     params["Dim Forward"] = 512
-    params["Dropout"] = 0.1
+    params["Dropout"] = 0.2
 
     print(expDir, params)
     os.makedirs(expDir, exist_ok=True)
